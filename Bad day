@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ar">
+<head>
+  <meta charset="utf-8" />
+  <title>التربية السيئة - Prototype</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+  <style>
+    body { margin:0; background:#000; font-family: "Segoe UI", Tahoma, sans-serif; direction:rtl; }
+    #game-container { width:100vw; height:100vh; overflow:hidden; }
+    .debug { position:fixed; left:8px; top:8px; color:#fff; font-size:13px; opacity:0.6; }
+  </style>
+</head>
+<body>
+  <div id="game-container"></div>
+  <div class="debug">نسخة تجريبية — اسفحح للأمام</div>
+
+<script>
+/*
+  Prototype: "التربية السيئة"
+  - مكتبة: Phaser 3
+  - منظور 2D (عيني لاعب من أعلى قليلاً) - منظور قريب لتعزيز المشاعر
+  - مشاهد: menu -> morning -> school -> bullying -> escort -> home -> ending
+  - هدف: نموذج لأحداثك مع مؤشرات نفسية (Stress)
+*/
+
+// --- إعداد اللعبة ---
+const config = {
+  type: Phaser.AUTO,
+  parent: 'game-container',
+  width: 900,
+  height: 600,
+  backgroundColor: '#111111',
+  physics: { default: 'arcade', arcade: { debug: false } },
+  scene: [BootScene, MenuScene, MorningScene, SchoolScene, BullyingScene, EscortScene, HomeScene, EndingScene]
+};
+new Phaser.Game(config);
+
+/* ---------- المشاهد (Scenes) ---------- */
+
+// مشهد تمهيدي لتعريف المشاهد (مهم لتجنب ReferenceError)
+function BootScene() { Phaser.Scene.call(this, { key: 'BootScene' }); }
+BootScene.prototype = Object.create(Phaser.Scene.prototype);
+BootScene.prototype.constructor = BootScene;
+BootScene.prototype.preload = function(){}
+BootScene.prototype.create = function(){ this.scene.start('MenuScene'); };
+
+// القائمة الرئيسية
+function MenuScene() { Phaser.Scene.call(this, { key: 'MenuScene' }); }
+MenuScene.prototype = Object.create(Phaser.Scene.prototype);
+MenuScene.prototype.constructor = MenuScene;
+MenuScene.prototype.create = function(){
+  const { width, height } = this.sys.game.config;
+  this.add.text(width/2, 140, 'التربية السيئة', { fontSize: '44px', color:'#ffffff' }).setOrigin(0.5);
+  this.add.text(width/2, 220, 'لعبة رعب نفسي - نسخة تجريبية', { fontSize: '20px', color:'#ddd' }).setOrigin(0.5);
+
+  const start = this.add.text(width/2, 340, 'ابدأ اليوم السيئ', { fontSize: '28px', color:'#fff', backgroundColor:'#7a0c0c', padding: { x: 16, y: 8 } })
+    .setOrigin(0.5).setInteractive();
+  start.on('pointerdown', ()=> this.scene.start('MorningScene'));
+
+  this.add.text(20, height-40, 'تم التصميم كنموذج — يمكن توسيعه بسهولة', { fontSize: '14px', color:'#aaa' });
+};
+
+// صباح اللاعب — مشهد قصير يهيئ الجو والموارد المحدودة
+function MorningScene() { Phaser.Scene.call(this, { key: 'MorningScene' }); }
+MorningScene.prototype = Object.create(Phaser.Scene.prototype);
+MorningScene.prototype.constructor = MorningScene;
+MorningScene.prototype.create = function(){
+  const { width, height } = this.sys.game.config;
+  // خلفية غرفة بسيطة
+  this.cameras.main.setBackgroundColor('#2b2b2b');
+  this.add.text(40,40, 'أنت تستيقظ متأخراً...', { fontSize:'26px', color:'#fff' });
+  this.add.text(40,90, 'في المطبخ: حليب وقطعة خبز ناشف فقط.', { fontSize:'18px', color:'#ddd' });
+
+  // عرض موارد بسيطة
+  this.add.text(40,140, 'اضغط على المساحة للانطلاق إلى المدرسة', { fontSize:'16px', color:'#eee' });
+
+  this.input.keyboard.once('keydown-SPACE', ()=> {
+    // تمرير نص درامي قصير
+    this.showSceneText([
+      "تتسارع دقات قلبك. الوقت في تزايد.",
+      "لا يوجد وقت لارتداء حذاء مرتب. تنطلق إلى الخارج..."
+    ], ()=> this.scene.start('SchoolScene') );
+  });
+};
+
+// مشهد المدرسة — الدخول، ضرب الحارس، والذهاب للقسم
+function SchoolScene() { Phaser.Scene.call(this, { key: 'SchoolScene' }); }
+SchoolScene.prototype = Object.create(Phaser.Scene.prototype);
+SchoolScene.prototype.constructor = SchoolScene;
+SchoolScene.prototype.create = function(){
+  const { width, height } = this.sys.game.config;
+  this.cameras.main.setBackgroundColor('#1a1a1a');
+
+  // مؤشر الضغط النفسي (stress)
+  this.stress = 0; // 0..100
+  this.stressText = this.add.text(20,20, 'ضغط: 0', { fontSize:'18px', color:'#ffdddd' });
+
+  // وصف الوصول
+  this.add.text(width/2,60, 'بوابة المدرسة مغلقة — الحارس صارم', { fontSize:'22px', color:'#fff' }).setOrigin(0.5);
+
+  this.add.text(40,120, 'اضغط (E) للتعامل مع الحارس (سيحدث ضرب)', { fontSize:'16px', color:'#ddd' });
+
+  // التفاعل مع الحارس
+  this.input.keyboard.once('keydown-E', ()=> this.getBeatenByGuard() );
+};
+
+SchoolScene.prototype.getBeatenByGuard = function(){
+  const lines = [
+    "الحارس يصدر صوتاً جامداً: \"تأخرت!\"",
+    "تُضرب خمس مرات. كل ضربة تزيد الضغط النفسي."
+  ];
+  this.showSceneText(lines, ()=>{
+    this.incrementStress(35); // ضربات قوية
+    // الانتقال للقسم بعد ثانية
+    this.time.delayedCall(800, ()=> this.scene.start('BullyingScene'));
+  });
+};
+
+SchoolScene.prototype.incrementStress = function(amount){
+  this.stress = Phaser.Math.Clamp(this.stress + amount, 0, 100);
+  this.stressText.setText('ضغط: ' + this.stress);
+};
+
+// مشهد القسم والتنمر داخل الفصل
+function BullyingScene() { Phaser.Scene.call(this, { key: 'BullyingScene' }); }
+BullyingScene.prototype = Object.create(Phaser.Scene.prototype);
+BullyingScene.prototype.constructor = BullyingScene;
+BullyingScene.prototype.create = function(){
+  const { width, height } = this.sys.game.config;
+  this.cameras.main.setBackgroundColor('#121212');
+  this.add.text(width/2,40, 'في القسم — الجو مشحون', { fontSize:'24px', color:'#fff' }).setOrigin(0.5);
+
+  // حالة اللاعب
+  this.stress = 40; // يبدأ متبقي من المشهد السابق
+  this.stressText = this.add.text(20,20, 'ضغط: ' + this.stress, { fontSize:'18px', color:'#ffdddd' });
+
+  // زر السبورة (المعلّمة تنادي)
+  this.add.text(60,110, 'المعلّمة تناديك إلى السبورة. اضغط (S) للصعود.', { fontSize:'16px', color:'#ddd' });
+
+  this.input.keyboard.once('keydown-S', ()=> {
+    // سلسلة من التفاعلات: ضربات متتالية، مشوشة
+    this.showSceneText([
+      "المعلمة: \"حل هذا السؤال!\"",
+      "تحاول، لكن لا تستطيع الإجابة. تُعاقب.",
+      "الضربات تتزايد — الضربة الرابعة أقوى."
+    ], ()=>{
+      this.incrementStress(30);
+      // رموز التشويش البصري: فلش صغير، شاشة تهتز
+      this.cameras.main.shake(600, 0.01);
+      this.time.delayedCall(900, ()=> {
+        // بعد القسم: التنمر عند الخروج
+        this.scene.start('EscortScene', { stress: this.stress });
+      });
+    });
+  });
+};
+
+BullyingScene.prototype.incrementStress = function(amount){
+  this.stress = Phaser.Math.Clamp(this.stress + amount, 0, 100);
+  this.stressText.setText('ضغط: ' + this.stress);
+};
+
+// مشهد التنمر الخارجي — سقوط ومساعدة تلميذ واحد
+function EscortScene() { Phaser.Scene.call(this, { key: 'EscortScene' }); }
+EscortScene.prototype = Object.create(Phaser.Scene.prototype);
+EscortScene.prototype.constructor = EscortScene;
+EscortScene.prototype.init = function(data){ this.stress = data.stress || 70; }
+EscortScene.prototype.create = function(){
+  const { width, height } = this.sys.game.config;
+  this.cameras.main.setBackgroundColor('#0f0f0f');
+  this.add.text(width/2,60, 'الخارج — المتنمّرون يهاجمونك', { fontSize:'24px', color:'#fff' }).setOrigin(0.5);
+  this.stressText = this.add.text(20,20, 'ضغط: ' + this.stress, { fontSize:'18px', color:'#ffdddd' });
+
+  this.showSceneText([
+    "تُدفع أرضًا. تكاد تسمع ضحكاتهم في أذنك.",
+    "تتغير الرؤية: أطراف الشاشة تُظلم وتشوش."
+  ], ()=>{
+    // سقطت — تظهر مساعدة تلميذ
+    this.time.delayedCall(800, ()=> {
+      this.showSceneText([
+        "تلميذ واحد يملك وجهاً ودوداً: \"هيا، سأوصلُك للبيت.\""
+      ], ()=> {
+        this.incrementStress(-15); // قليل من الراحة
+        this.time.delayedCall(700, ()=> this.scene.start('HomeScene', { stress: this.stress }) );
+      });
+    });
+  });
+};
+
+EscortScene.prototype.incrementStress = function(amount){
+  this.stress = Phaser.Math.Clamp(this.stress + amount, 0, 100);
+  this.stressText.setText('ضغط: ' + this.stress);
+};
+
+// مشهد الوصول إلى البيت — الأم مصابة
+function HomeScene() { Phaser.Scene.call(this, { key: 'HomeScene' }); }
+HomeScene.prototype = Object.create(Phaser.Scene.prototype);
+HomeScene.prototype.constructor = HomeScene;
+HomeScene.prototype.init = function(data){ this.stress = data.stress || 60; }
+HomeScene.prototype.create = function(){
+  const { width, height } = this.sys.game.config;
+  this.cameras.main.setBackgroundColor('#222020');
+  this.add.text(width/2,40, 'تصل إلى البيت — الباب مفتوح قليلاً', { fontSize:'22px', color:'#fff' }).setOrigin(0.5);
+
+  this.stressText = this.add.text(20,20, 'ضغط: ' + this.stress, { fontSize:'18px', color:'#ffdddd' });
+
+  this.showSceneText([
+    "تدلف. المنزل هادئ، ثم ترى أمك جالسة على الكرسي.",
+    "عينها على شكل أسود متورّم. تتساءل: \"ما هذه الحاقة السوداء؟\""
+  ], ()=> {
+    this.incrementStress(10);
+    // لحظة قرار/مشهد نهائي — انتقل إلى النهاية
+    this.add.text(width/2, 420, 'اضغط (E) للتقرب منها', { fontSize:'18px', color:'#fff' }).setOrigin(0.5);
+    this.input.keyboard.once('keydown-E', ()=> this.scene.start('EndingScene', { stress: this.stress }) );
+  });
+};
+
+HomeScene.prototype.incrementStress = function(amount){
+  this.stress = Phaser.Math.Clamp(this.stress + amount, 0, 100);
+  this.stressText.setText('ضغط: ' + this.stress);
+};
+
+// مشهد النهاية (نهاية مفتوحة، رسالة قوية)
+function EndingScene() { Phaser.Scene.call(this, { key: 'EndingScene' }); }
+EndingScene.prototype = Object.create(Phaser.Scene.prototype);
+EndingScene.prototype.constructor = EndingScene;
+EndingScene.prototype.init = function(data){ this.stress = data.stress || 80; }
+EndingScene.prototype.create = function(){
+  const { width, height } = this.sys.game.config;
+  this.cameras.main.setBackgroundColor('#000000');
+  this.add.text(width/2,200, 'بعض الدروس لا تُعلّم في المدرسة.', { fontSize:'28px', color:'#ffdddd' }).setOrigin(0.5);
+  this.add.text(width/2,260, 'النهاية — اضغط (R) لإعادة التشغيل', { fontSize:'18px', color:'#fff' }).setOrigin(0.5);
+  this.add.text(width/2,320, `مؤشر الضغط النهائي: ${this.stress}`, { fontSize:'16px', color:'#ffa8a8' }).setOrigin(0.5);
+
+  this.input.keyboard.once('keydown-R', ()=> this.scene.start('MenuScene') );
+};
+
+/* ---------- مساعدات المشاهد: عرض نص مترابط ---------- */
+Phaser.Scene.prototype.showSceneText = function(lines, onComplete){
+  // يعرض مجموعة أسطر نصية واحدًا تلو الآخر مع انتظار نقر
+  const { width, height } = this.sys.game.config;
+  const box = this.add.rectangle(width/2, height-130, width-80, 180, 0x0a0a0a, 0.85).setStrokeStyle(2, 0x333333);
+  let idx = 0;
+  const txt = this.add.text(width/2 - (width-80)/2 + 16, height-200 + 24, '', { fontSize:'20px', color:'#fff', wordWrap:{ width: width-120 } });
+
+  const showNext = () => {
+    if (idx >= lines.length){
+      box.destroy(); txt.destroy();
+      if (onComplete) onComplete();
+      return;
+    }
+    txt.setText(lines[idx]);
+    idx++;
+    // اضغط مفتاح او النقر للمتابعة
+    const keyDown = (evt) => {
+      this.input.keyboard.off('keydown-SPACE', keyDown);
+      this.input.off('pointerdown', keyDown);
+      showNext();
+    };
+    this.input.keyboard.once('keydown-SPACE', keyDown);
+    this.input.once('pointerdown', keyDown);
+  };
+  showNext();
+};
+
+</script>
+</body>
+</html>
